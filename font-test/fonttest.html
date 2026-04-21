@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>BMFont 深度跳动检测工具</title>
+    <style>
+        :root { --primary: #1890ff; --bg: #141414; --panel: #1f1f1f; --text: #dcdcdc; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* 顶部导航与上传 */
+        header { background: #000; padding: 10px 20px; display: flex; align-items: center; gap: 20px; border-bottom: 1px solid #333; }
+        .upload-btn { background: #333; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .upload-btn:hover { background: #444; }
+
+        .main-layout { display: grid; grid-template-columns: 320px 1fr; flex: 1; overflow: hidden; }
+
+        /* 左侧控制栏 */
+        .sidebar { background: var(--panel); padding: 20px; border-right: 1px solid #333; overflow-y: auto; }
+        .card { background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        h4 { margin: 0 0 10px 0; font-size: 14px; color: var(--primary); border-left: 3px solid var(--primary); padding-left: 8px; }
+        .input-group { margin-bottom: 12px; }
+        label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+        input { width: 100%; background: #141414; border: 1px solid #444; color: #fff; padding: 8px; border-radius: 4px; box-sizing: border-box; }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 8px; }
+
+        /* 右侧工作区 */
+        .workspace { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+        
+        /* 1. 独立输入预览区 */
+        .preview-section { background: #000; border: 1px solid #333; border-radius: 12px; padding: 20px; position: relative; }
+        .interactive-input { margin-bottom: 15px; }
+        .interactive-input input { font-size: 18px; border-color: var(--primary); background: #1a1a1a; padding: 12px; }
+        .canvas-container { height: 120px; display: flex; align-items: center; justify-content: center; position: relative; border: 1px dashed #333; background: #080808; border-radius: 8px; }
+        .guide-line { position: absolute; left: 50%; height: 100%; width: 1px; background: rgba(255, 0, 0, 0.5); pointer-events: none; z-index: 10; }
+        .px-info { position: absolute; bottom: 5px; right: 10px; font-size: 12px; color: var(--primary); }
+
+        /* 2. 自动化动画区 */
+        .animation-section { background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 20px; }
+        .log-area { background: #000; height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; padding: 10px; color: #00ff41; border: 1px solid #333; margin-top: 10px; }
+        .warning { color: #ff4d4f; }
+
+        button { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:active { opacity: 0.8; }
+        button.stop { background: #f5222d; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div style="font-weight: bold; color: var(--primary)">BMFont Tester</div>
+    <div class="upload-btn" onclick="document.getElementById('fnt-file').click()">选择 .fnt</div>
+    <div class="upload-btn" onclick="document.getElementById('png-file').click()">选择 .png</div>
+    <div id="status-text" style="font-size: 12px; color: #666;">等待加载资源...</div>
+</header>
+
+<div class="main-layout">
+    <div class="sidebar">
+        <div class="card">
+            <h4>自动化检测配置</h4>
+            <div class="input-group"><label>起始值</label><input type="number" id="start-v" value="1111"></div>
+            <div class="input-group"><label>目标值</label><input type="number" id="end-v" value="1200"></div>
+            <div class="input-group"><label>步进</label><input type="number" id="step-v" value="1"></div>
+            <div class="input-group">
+                <label>格式化</label>
+                <div class="checkbox-row"><input type="checkbox" id="fmt-comma" checked> <span>千分位 (,)</span></div>
+                <div class="checkbox-row"><input type="checkbox" id="fmt-plus"> <span>显示正号 (+)</span></div>
+            </div>
+            <div class="input-group"><label>频率 (ms)</label><input type="number" id="freq-v" value="100"></div>
+            <button id="btn-run" onclick="toggleAnimation()">运行自动跳动检测</button>
+        </div>
+        <div style="font-size: 11px; color: #555;">提示：拖入文件也可直接加载</div>
+    </div>
+
+    <div class="workspace">
+        <div class="preview-section">
+            <div class="interactive-input">
+                <label>实时交互预览 (输入任意字符观察长度变化)</label>
+                <input type="text" id="manual-input" placeholder="在此输入测试文本..." oninput="handleManualInput()">
+            </div>
+            <div class="canvas-container">
+                <div class="guide-line"></div>
+                <canvas id="manual-canvas"></canvas>
+                <div class="px-info" id="manual-px">宽度: 0 px</div>
+            </div>
+        </div>
+
+        <div class="animation-section">
+            <h4 style="border-color: #52c41a;">自动跳动检测区</h4>
+            <div class="canvas-container" style="height: 100px; background: #050505;">
+                <div class="guide-line"></div>
+                <canvas id="auto-canvas"></canvas>
+                <div class="px-info" id="auto-px">当前宽度: 0 px</div>
+            </div>
+            <div class="log-area" id="log">准备就绪。点击左侧“运行”开始...</div>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="fnt-file" accept=".fnt" hidden>
+<input type="file" id="png-file" accept=".png" hidden>
+
+<script>
+    let fontData = { chars: {} };
+    let fontImg = new Image();
+    let isRunning = false, timer = null;
+
+    // --- 文件加载 ---
+    function setupFile(id, cb) {
+        document.getElementById(id).onchange = (e) => {
+            const f = e.target.files[0];
+            if(!f) return;
+            const r = new FileReader();
+            if(f.name.endsWith('.fnt')) {
+                r.onload = e => parseFnt(e.target.result);
+                r.readAsText(f);
+            } else {
+                r.onload = e => { fontImg.src = e.target.result; fontImg.onload = () => handleManualInput(); };
+                r.readAsDataURL(f);
+            }
+        };
+    }
+    setupFile('fnt-file');
+    setupFile('png-file');
+
+    function parseFnt(text) {
+        fontData.chars = {};
+        text.split('\n').forEach(line => {
+            const obj = {};
+            line.split(/\s+/).forEach(p => { const [k, v] = p.split('='); if(k&&v) obj[k] = isNaN(v)?v.replace(/"/g,''):parseInt(v); });
+            if(line.startsWith('char ')) fontData.chars[obj.id] = obj;
+            if(line.startsWith('common ')) fontData.common = obj;
+        });
+        document.getElementById('status-text').innerText = "FNT 已加载 (" + Object.keys(fontData.chars).length + "字)";
+        handleManualInput();
+    }
+
+    // --- 渲染核心 ---
+    function renderText(canvasId, text, pxId) {
+        const canvas = document.getElementById(canvasId), ctx = canvas.getContext('2d');
+        if(!fontData.common) return 0;
+
+        let totalW = 0;
+        for(let char of text) {
+            const c = fontData.chars[char.charCodeAt(0)];
+            if(c) totalW += c.xadvance;
+        }
+
+        canvas.width = totalW + 20;
+        canvas.height = fontData.common.lineHeight + 10;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        let x = 10;
+        for(let char of text) {
+            const c = fontData.chars[char.charCodeAt(0)];
+            if(c && fontImg.complete) {
+                ctx.drawImage(fontImg, c.x, c.y, c.width, c.height, x + c.xoffset, 5 + c.yoffset, c.width, c.height);
+                x += c.xadvance;
+            }
+        }
+        document.getElementById(pxId).innerText = `宽度: ${totalW} px`;
+        return totalW;
+    }
+
+    // --- 交互处理 ---
+    function handleManualInput() {
+        const val = document.getElementById('manual-input').value;
+        renderText('manual-canvas', val, 'manual-px');
+    }
+
+    function toggleAnimation() {
+        const btn = document.getElementById('btn-run');
+        if(isRunning) {
+            clearInterval(timer);
+            isRunning = false;
+            btn.innerText = "运行自动跳动检测";
+            btn.className = "";
+            return;
+        }
+        if(!fontData.common) return alert("请先上传 FNT 文件");
+        
+        const start = parseInt(document.getElementById('start-v').value);
+        const end = parseInt(document.getElementById('end-v').value);
+        const step = parseInt(document.getElementById('step-v').value);
+        const freq = parseInt(document.getElementById('freq-v').value);
+        const log = document.getElementById('log');
+
+        isRunning = true;
+        btn.innerText = "停止检测";
+        btn.className = "stop";
+        log.innerHTML = "检测开始...\n";
+
+        let curr = start, lastW = -1;
+        timer = setInterval(() => {
+            if(curr > end) { toggleAnimation(); return; }
+            
+            let str = curr.toString();
+            if(document.getElementById('fmt-comma').checked) str = curr.toLocaleString();
+            if(document.getElementById('fmt-plus').checked && curr > 0) str = "+" + str;
+
+            const w = renderText('auto-canvas', str, 'auto-px');
+            
+            if(lastW !== -1 && w !== lastW) {
+                log.innerHTML += `<div class="warning">数值: ${str.padEnd(12)} | 宽度: ${w}px (变动!)</div>`;
+            } else {
+                log.innerHTML += `<div>数值: ${str.padEnd(12)} | 宽度: ${w}px</div>`;
+            }
+            log.scrollTop = log.scrollHeight;
+            
+            lastW = w;
+            curr += step;
+        }, freq);
+    }
+
+    // 拖拽支持
+    window.ondragover = e => e.preventDefault();
+    window.ondrop = e => {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        for(let f of files) {
+            const r = new FileReader();
+            if(f.name.endsWith('.fnt')) {
+                r.onload = e => parseFnt(e.target.result);
+                r.readAsText(f);
+            } else if(f.name.endsWith('.png')) {
+                r.onload = e => { fontImg.src = e.target.result; fontImg.onload = () => handleManualInput(); };
+                r.readAsDataURL(f);
+            }
+        }
+    };
+</script>
+</body>
+</html>
