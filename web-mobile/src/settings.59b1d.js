@@ -1,1 +1,0 @@
-window._CCSettings={platform:"web-mobile",groupList:["default"],collisionMatrix:[[true]],hasResourcesBundle:false,hasStartSceneBundle:false,remoteBundles:[],subpackages:[],launchScene:"db://assets/PathGenerator/games/dy_fldbz_en/scene/BallPathGenerator.fire",orientation:"portrait",jsList:[],bundleVers:{internal:"1b082",main:"59167"}};
